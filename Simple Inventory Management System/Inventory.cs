@@ -1,47 +1,78 @@
-﻿
-using System.Collections.Generic;
+﻿using MongoDB.Driver;
 
 namespace Simple_Inventory_Management_System
 {
     internal class Inventory : IInventory
-    {   
-        private Dictionary<string, Product> products = new Dictionary<string, Product>();
+    {
+        IMongoCollection<Product> productCollection;
+
+        public Inventory()
+        {
+            this.productCollection = MongoDBConnection();
+        }
+
+        private IMongoCollection<Product> MongoDBConnection()
+        {
+            string connectionString = "mongodb://127.0.0.1:27017";
+            string DBName = "Inventory-Management";
+            string collectionName = "Product";
+
+            var client = new MongoClient(connectionString);
+            var db = client.GetDatabase(DBName);
+            return db.GetCollection<Product>(collectionName);
+
+        }
+
 
         public void AddProduct(Product input)
         {
-            if (products.ContainsKey(input.Name))
+            //var filter = Builders<Product>.Filter.Eq(p => p.Name, input.Name);
+            var existingProduct = productCollection.Find(p => p.Name == input.Name).FirstOrDefault();
+
+            if (existingProduct != null)
             {
-                products[input.Name].Quantity += input.Quantity;
-            }else
+                existingProduct.Quantity += input.Quantity;
+                editProduct(existingProduct);
+            }
+            else
             {
-                products.Add(input.Name, input);
+                productCollection.InsertOne(input);
             }
         }
 
         public void deleteProduct(string input)
         {
-            if(products.ContainsKey(input))
-            {
-                products.Remove(input);
-            }
-            else
+
+            var result = productCollection.DeleteOne(p => p.Name == input);
+
+            if (result.DeletedCount == 0)
             {
                 Console.WriteLine("Product not found");
             }
+
         }
 
         public void editProduct(Product input)
         {
-            if (products.ContainsKey(input.Name))
+            var filter = Builders<Product>.Filter.Eq(p => p.Name, input.Name);
+            var update = Builders<Product>.Update.Set(p => p.Price, input.Price)
+                                                 .Set(p => p.Quantity, input.Quantity);
+
+            var result = productCollection.UpdateOne(filter, update);
+
+            if (result.MatchedCount == 0)
             {
-                products[input.Name] = input;
+                Console.WriteLine("Product not found");
             }
+
+
         }
 
-        public IEnumerable<Product> ListProducts() => products.Values;
+        public IEnumerable<Product> ListProducts() => productCollection.Find(_ => true).ToList();
 
 
-        public Product? searchProduct(string input) => products.ContainsKey(input) ? products[input] : null;
+
+        public Product? searchProduct(string input) => productCollection.Find(p => p.Name == input).FirstOrDefault();
 
     }
 }
